@@ -42,8 +42,7 @@ namespace IsaacModInstaller {
             }
 
             try {
-                bool modified = GamePatcher.PatchGameExecutable(gamePath);
-                modified |= GamePatcher.PatchGameExecutableAnalytics(gamePath);
+                bool modified = GamePatcher.PatchGameWithAnalytics(gamePath);
                 ShowStatus(modified ? "Game patched successfully." : "Game is already patched.",
                     modified ? Brushes.Green : Brushes.DarkOrange);
             } catch (Exception ex) {
@@ -93,6 +92,29 @@ namespace IsaacModInstaller {
             } finally {
                 UpdateDiagnostics();
             }
+        }
+
+        private void ModSafetyButton_Click(object sender, RoutedEventArgs e) {
+            var dialog = new Microsoft.Win32.OpenFolderDialog {
+                Title = "Select the game's mods folder (or Steam workshop/content/250900)",
+            };
+            if (dialog.ShowDialog() != true) return;
+            try {
+                var changes = ModSafetyPatcher.Plan(dialog.FolderName);
+                if (changes.Count == 0) {
+                    ShowStatus("No changes: supported mods are absent or already patched.", Brushes.DarkOrange);
+                    return;
+                }
+                string details = string.Join("\n", changes.Select(change => change.Path));
+                var answer = MessageBox.Show(
+                    "Close the game first. This guards the CuerLib player-index crash and Coming Down ZoneLink crash, and limits EID search/input blocking, MCM menus and emote keybinds whenever more than one player entity exists (including local co-op and twins). " +
+                    "It also clears emote tasks on restart and fixes Specialist player indexing. This does not guarantee online compatibility.\n\n" +
+                    "Original files will be backed up alongside each file (.iom-*.bak). Apply to:\n" + details,
+                    "Mod safety workarounds", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (answer != MessageBoxResult.Yes) return;
+                ModSafetyPatcher.Commit(changes);
+                ShowStatus($"Patched {changes.Count} mod files; backups saved beside the originals.", Brushes.Green);
+            } catch (Exception ex) { ShowError(ex.Message); }
         }
 
         private void GamePath_TextChanged(object sender, TextChangedEventArgs e) {
