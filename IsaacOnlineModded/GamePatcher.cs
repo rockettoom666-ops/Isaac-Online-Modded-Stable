@@ -71,6 +71,15 @@ namespace IsaacModInstaller {
         public static bool PatchGameExecutable(string gamePath) =>
             PatchFile(gamePath, CoopOriginal, CoopPatched);
 
+        // Validate both signatures in memory before replacing the executable.
+        public static bool PatchGameWithAnalytics(string gamePath) {
+            byte[] bytes = File.ReadAllBytes(gamePath);
+            bool modified = ApplyPatch(bytes, CoopOriginal, CoopPatched);
+            modified |= ApplyPatch(bytes, AnalyticsOriginal, AnalyticsPatched);
+            if (modified) WritePatchedFile(gamePath, bytes);
+            return modified;
+        }
+
         public static bool PatchGameExecutableAnalytics(string gamePath) =>
             PatchFile(gamePath, AnalyticsOriginal, AnalyticsPatched);
 
