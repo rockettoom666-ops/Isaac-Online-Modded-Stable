@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../IsaacOnlineModded/ModSafetyPatcher.cs" Link="ModSafetyPatcher.cs" />
+    <Compile Include="../../IsaacOnlineModded/EIDPatcher.cs" Link="EIDPatcher.cs" />
+    <Compile Include="../../IsaacOnlineModded/GamePatcher.cs" Link="GamePatcher.cs" />
+    <PackageReference Include="GameFinder" Version="4.3.3" />
+  </ItemGroup>
+</Project>
