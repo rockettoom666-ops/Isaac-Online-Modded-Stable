@@ -26,6 +26,9 @@ public static class ModSafetyPatcher {
         new("836319872", "features/eid_holdmapdesc.lua",
             "if EID.Config[\"ItemReminderDisableInputs\"] then EID.holdTabPlayer.ControlsCooldown = 2 end",
             "if Game():GetNumPlayers() <= 1 and EID.Config[\"ItemReminderDisableInputs\"] then EID.holdTabPlayer.ControlsCooldown = 2 end -- IsaacOnlineModded: co-op safety"),
+        new("836319872", "features/eid_bagofcrafting.lua",
+            "\t\tEID.bagPlayer.ControlsCooldown = 2",
+            "\t\tif Game():GetNumPlayers() <= 1 then EID.bagPlayer.ControlsCooldown = 2 end -- IsaacOnlineModded: recipe UI must not block co-op movement"),
         Guard("3034946842", "main.lua", "function EmoteBinds:KeybindManager(player)",
             $"if {Multi} then return end"),
         new("3034946842", "scheduler.lua",
@@ -43,9 +46,15 @@ public static class ModSafetyPatcher {
             "for playerNum = 0, game:GetNumPlayers() - 1 do -- IsaacOnlineModded: valid player indices"),
         new("2878352867", "main.lua", "    data.ZoneLink:Remove()",
             "    if data.ZoneLink ~= nil then data.ZoneLink:Remove() end -- IsaacOnlineModded: nil-safe Coming Down cleanup"),
+        new("2878352867", "content/entities2.xml",
+            "<entities anm2root=\"gfx/\" version=\"1\">",
+            "<entities anm2root=\"gfx/\" version=\"5\"> <!-- IsaacOnlineModded: Repentance+ entities schema -->"),
         new("2900345009", "cuerlib/class/netcoop.lua",
             "                local info = table.remove(infos, index);\n                table.insert(infos, 0, info);",
             "                local info = table.remove(infos, index + 1); -- IsaacOnlineModded: GetPlayerIndex is zero-based\n                table.insert(infos, 1, info); -- IsaacOnlineModded: Lua tables are one-based"),
+        Guard("2900345009", "cuerlib/class/netcoop.lua",
+            "    local function PostGameStarted(mod, isContinued)",
+            "actionRecords = {}; -- Discard input samples from the previous run.\n\tplayerCheckCooldown = MAX_RECORD_COUNT * 2;"),
     };
 
     public sealed record Change(string Path, byte[] Original, byte[] Patched);
@@ -54,11 +63,13 @@ public static class ModSafetyPatcher {
     // source is bundled: rules are applied only to explicitly identified installed mods.
     public static List<Change> Plan(string modsDirectory) {
         var changes = new List<Change>();
+        bool foundSupportedMod = false;
         foreach (string directory in Directory.EnumerateDirectories(modsDirectory).OrderBy(x => x, StringComparer.Ordinal)) {
             string metadata = Path.Combine(directory, "metadata.xml");
             if (!System.IO.File.Exists(metadata)) continue;
             string? id = XDocument.Load(metadata).Root?.Element("id")?.Value.Trim();
             foreach (var group in Rules.Where(r => r.WorkshopId == id).GroupBy(r => r.File)) {
+                foundSupportedMod = true;
                 string path = Path.Combine(directory, group.Key);
                 byte[] original = System.IO.File.ReadAllBytes(path);
                 bool bom = original.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf });
@@ -73,7 +84,57 @@ public static class ModSafetyPatcher {
                 changes.Add(new(path, original, patched));
             }
         }
+        if (!foundSupportedMod)
+            throw new InvalidOperationException("No supported mods found. Select the mods folder beside the isaac-ng.exe used to launch the game, not an individual mod folder. No files were patched.");
         return changes;
+    }
+
+    // Read-only evidence of the selected files; it does not prove what another PC loaded.
+    public static string CreateReport(string modsDirectory) {
+        var report = new StringBuilder();
+        report.AppendLine("Isaac Online Modded " + typeof(ModSafetyPatcher).Assembly.GetName().Version);
+        report.AppendLine("Mods folder: " + Path.GetFullPath(modsDirectory));
+        report.AppendLine("disable.it is recorded when present; file presence alone does not prove a mod ran.");
+        int found = 0;
+        foreach (string directory in Directory.EnumerateDirectories(modsDirectory).OrderBy(x => x, StringComparer.Ordinal)) {
+            string metadata = Path.Combine(directory, "metadata.xml");
+            if (!System.IO.File.Exists(metadata)) continue;
+            report.AppendLine();
+            report.AppendLine(Path.GetFileName(directory) + (System.IO.File.Exists(Path.Combine(directory, "disable.it")) ? " [disable.it present]" : " [no disable.it]"));
+            try {
+                string? id = XDocument.Load(metadata).Root?.Element("id")?.Value.Trim();
+                report.AppendLine("Workshop ID: " + id);
+                foreach (var group in Rules.Where(r => r.WorkshopId == id).GroupBy(r => r.File)) {
+                    found++;
+                    string path = Path.Combine(directory, group.Key);
+                    if (!System.IO.File.Exists(path)) {
+                        report.AppendLine("MISSING: " + group.Key);
+                        continue;
+                    }
+                    string text = System.IO.File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
+                    int applied = 0, pending = 0, unknown = 0;
+                    foreach (Rule rule in group) {
+                        try {
+                            if (Apply(text, rule, path) == text) applied++;
+                            else pending++;
+                        } catch (InvalidOperationException) { unknown++; }
+                    }
+                    report.AppendLine($"{group.Key}: applied={applied}, pending={pending}, unsupported={unknown}");
+                }
+                // Relative names and hashes allow comparison across machines without sharing mod code.
+                foreach (string path in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                    .Where(p => Path.GetExtension(p).Equals(".lua", StringComparison.OrdinalIgnoreCase) || Path.GetExtension(p).Equals(".xml", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(p => p, StringComparer.Ordinal)) {
+                    report.AppendLine("SHA256 " + Convert.ToHexString(SHA256.HashData(System.IO.File.ReadAllBytes(path))).ToLowerInvariant()
+                        + "  " + Path.GetRelativePath(directory, path));
+                }
+            } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException) {
+                report.AppendLine("READ ERROR: " + ex.Message);
+            }
+        }
+        if (found == 0) report.AppendLine("NO SUPPORTED MOD FILES FOUND. This does not mean the fixes are installed.");
+        report.AppendLine("Matching files do not guarantee matching mod settings or online compatibility.");
+        return report.ToString();
     }
 
     private static string Apply(string text, Rule rule, string path) {

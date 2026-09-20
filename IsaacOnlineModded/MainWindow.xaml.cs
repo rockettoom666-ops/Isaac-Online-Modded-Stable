@@ -9,6 +9,9 @@ namespace IsaacModInstaller {
     public partial class MainWindow : Window {
         public MainWindow() {
             InitializeComponent();
+            Title = "Isaac Online Modded " + System.Reflection.Assembly.GetExecutingAssembly()
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion.Split('+')[0];
 
             string gamePath = GamePatcher.DetectGamePath();
             if (string.IsNullOrEmpty(gamePath)) {
@@ -97,23 +100,41 @@ namespace IsaacModInstaller {
         private void ModSafetyButton_Click(object sender, RoutedEventArgs e) {
             var dialog = new Microsoft.Win32.OpenFolderDialog {
                 Title = "Select the game's mods folder (or Steam workshop/content/250900)",
+                InitialDirectory = Path.GetDirectoryName(txtGamePath.Text) ?? "",
             };
             if (dialog.ShowDialog() != true) return;
             try {
                 var changes = ModSafetyPatcher.Plan(dialog.FolderName);
                 if (changes.Count == 0) {
-                    ShowStatus("No changes: supported mods are absent or already patched.", Brushes.DarkOrange);
+                    ShowStatus("All recognized safety fixes are already installed in the selected folder. Export a report to check paths and files.", Brushes.Green);
                     return;
                 }
                 string details = string.Join("\n", changes.Select(change => change.Path));
                 var answer = MessageBox.Show(
                     "Close the game first. This guards the CuerLib player-index crash and Coming Down ZoneLink crash, and limits EID search/input blocking, MCM menus and emote keybinds whenever more than one player entity exists (including local co-op and twins). " +
-                    "It also clears emote tasks on restart and fixes Specialist player indexing. This does not guarantee online compatibility.\n\n" +
+                    "It also clears emote tasks and CuerLib input history on restart, fixes Specialist player indexing and Coming Down XML, and prevents EID recipe browsing from blocking co-op movement. EID descriptions remain enabled. This does not guarantee online compatibility.\n\n" +
                     "Original files will be backed up alongside each file (.iom-*.bak). Apply to:\n" + details,
                     "Mod safety workarounds", MessageBoxButton.YesNo, MessageBoxImage.Information);
                 if (answer != MessageBoxResult.Yes) return;
                 ModSafetyPatcher.Commit(changes);
                 ShowStatus($"Patched {changes.Count} mod files; backups saved beside the originals.", Brushes.Green);
+            } catch (Exception ex) { ShowError(ex.Message); }
+        }
+
+        private void ExportModReport_Click(object sender, RoutedEventArgs e) {
+            var folder = new Microsoft.Win32.OpenFolderDialog {
+                Title = "Select the mods folder used by the game",
+                InitialDirectory = Path.GetDirectoryName(txtGamePath.Text) ?? "",
+            };
+            if (folder.ShowDialog() != true) return;
+            try {
+                string report = ModSafetyPatcher.CreateReport(folder.FolderName);
+                var save = new Microsoft.Win32.SaveFileDialog {
+                    FileName = "IsaacOnlineModded-report.txt", Filter = "Text report|*.txt",
+                };
+                if (save.ShowDialog() != true) return;
+                File.WriteAllText(save.FileName, report);
+                ShowStatus("Report saved: " + save.FileName, Brushes.Green);
             } catch (Exception ex) { ShowError(ex.Message); }
         }
 
