@@ -1,4 +1,13 @@
-# Isaac Online Modded
+# Isaac Online Modded — stability preview
+
+Experimental fork of [xADDBx/Isaac-Online-Modded](https://github.com/xADDBx/Isaac-Online-Modded).
+Read the [changes and limitations](docs/STABILITY.md) or [инструкцию на русском](docs/STABILITY.ru.md).
+**Not yet validated in a two-PC online session; the reported hold-R disconnect remains unverified.**
+
+Preview 1.4.1-preview.4 resets CuerLib input history on restart, extends EID's
+movement protection to recipe browsing and adds an installation report.
+Upgrade using **Apply mod safety workarounds...** on both PCs; EID descriptions
+remain enabled. See the Russian guide for the exact folder and report steps.
 
 This tool allows you to patch the game binary of **The Binding of Isaac** to enable mods in online co-op play without the need to disable them beforehand. 
 

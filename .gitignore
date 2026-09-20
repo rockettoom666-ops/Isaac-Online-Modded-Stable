@@ -361,3 +361,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Local compatibility-patch backups
+*.iom-*.bak
+BinariesSelfContained/
+.DS_Store
